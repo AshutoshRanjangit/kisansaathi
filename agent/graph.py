@@ -13,7 +13,9 @@ from agent import nodes
 from agent.state import AgentState
 
 NODE_LABELS = {
-    "planner": "Planner (LLM)",
+    "planner": "Planner (LLM)\nreads conversation",
+    "check_slots": "Know crop, place,\ntransport?",
+    "ask_farmer": "Ask the farmer\n(one question)",
     "locate": "Geocode farmer",
     "fetch_data": "Parallel fetch\nweather ∥ mandi",
     "resolve_commodity": "Verify commodity",
@@ -26,7 +28,7 @@ NODE_LABELS = {
     "guardrail": "Guardrail verifier",
 }
 EDGES = [
-    ("planner", "locate"), ("locate", "fetch_data"), ("locate", "synthesize"),
+    ("planner", "check_slots"), ("check_slots", "ask_farmer"), ("check_slots", "locate"), ("locate", "fetch_data"), ("locate", "synthesize"),
     ("fetch_data", "resolve_commodity"), ("resolve_commodity", "geocode_mandis"),
     ("resolve_commodity", "expand_states"), ("expand_states", "resolve_commodity"),
     ("resolve_commodity", "engine"), ("geocode_mandis", "rank_markets"),
@@ -50,7 +52,11 @@ def build_graph():
     g.add_node("guardrail", nodes.guardrail)
 
     g.add_edge(START, "planner")
-    g.add_edge("planner", "locate")
+    g.add_node("check_slots", nodes.check_slots)
+    g.add_node("ask_farmer", nodes.ask_farmer)
+    g.add_edge("planner", "check_slots")
+    g.add_conditional_edges("check_slots", nodes.route_slots, {"ask_farmer": "ask_farmer", "locate": "locate"})
+    g.add_edge("ask_farmer", END)
     g.add_conditional_edges("locate", nodes.route_location, {"fetch_data": "fetch_data", "synthesize": "synthesize"})
     g.add_edge("fetch_data", "resolve_commodity")
     g.add_conditional_edges("resolve_commodity", nodes.route_commodity,

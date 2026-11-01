@@ -176,7 +176,7 @@ export function MandiPanel({ ranked, market, place, cost, commodity }) {
               {gain ? <>Extra <span className="text-forest-700">{inr(gain)}/qtl</span> vs your nearest mandi ({market.nearest.market}) — sell at {best.market}.</>
                 : <>{best.market} gives the best net price — and it is also your nearest mandi.</>}
             </div>
-            <div className="mt-1 text-xs text-slate-600">Commodity matched: <b>{commodity}</b> · transport at ₹{cost}/qtl/km (your setting) · road ≈ 1.3 × straight-line distance</div>
+            <div className="mt-1 text-xs text-slate-600">Commodity matched: <b>{commodity}</b> · {cost ? `transport ₹${cost}/qtl/km (from your answer)` : "transport cost not given — ranked by mandi price"} · road ≈ 1.3 × straight-line distance</div>
           </div>
         </div>
       )}

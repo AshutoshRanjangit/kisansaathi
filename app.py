@@ -28,7 +28,7 @@ def get_graph():
 # ------------------------------------------------------------------ sidebar
 with st.sidebar:
     st.header("🌾 Farm profile")
-    location = st.text_input("Village / town, district", value="Ganaur, Sonipat",
+    location = st.text_input("Village / town, district", value="",
                              help="e.g. 'Karnal', 'Barwala, Hisar', 'Nashik'")
     crop_choice = st.selectbox("Crop", COMMON_CROPS + ["Other…"], index=0)
     crop = st.text_input("Crop name", value="") if crop_choice == "Other…" else crop_choice

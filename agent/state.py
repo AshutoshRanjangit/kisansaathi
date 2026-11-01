@@ -8,9 +8,15 @@ class AgentState(TypedDict, total=False):
     audio: Optional[bytes]
     audio_mime: str
     ui_location: str
+    ui_lat: Optional[float]
+    ui_lon: Optional[float]
     ui_crop: str
     ui_lang: str  # auto | hi | en
-    cost_per_qtl_km: float
+    cost_per_qtl_km: Optional[float]
+    known: dict
+    history: list
+    asked: Optional[str]
+    slots: dict
 
     # working memory
     plan: dict

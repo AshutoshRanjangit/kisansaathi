@@ -155,7 +155,7 @@ def haversine_km(lat1, lon1, lat2, lon2) -> float:
     return 2 * 6371 * math.asin(math.sqrt(a))
 
 
-def market_table(rows: list[dict], user_lat, user_lon, district_coords: dict, cost_per_qtl_km: float):
+def market_table(rows: list[dict], user_lat, user_lon, district_coords: dict, cost_per_qtl_km: float | None):
     """One row per market: FAQ-grade modal price (else median), road distance, transport, net."""
     by_market = defaultdict(list)
     for r in rows:
@@ -169,7 +169,7 @@ def market_table(rows: list[dict], user_lat, user_lon, district_coords: dict, co
         dist = None
         if coords:
             dist = round(haversine_km(user_lat, user_lon, coords["lat"], coords["lon"]) * ROAD_FACTOR)
-        transport = None if dist is None else round(dist * cost_per_qtl_km)
+        transport = None if dist is None or not cost_per_qtl_km else round(dist * cost_per_qtl_km)
         table.append({
             "market": market, "district": district, "state": state,
             "modal_price": round(modal),

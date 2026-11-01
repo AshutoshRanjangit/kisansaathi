@@ -4,7 +4,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import AskView from "./components/AskView.jsx";
 import TraceView from "./components/TraceView.jsx";
 import Dashboard from "./components/Dashboard.jsx";
-import { askAgent, getHealth } from "./api.js";
+import { askAgent, getHealth, reverseGeocode } from "./api.js";
 
 function EmptyState({ what, hi, onAsk }) {
   return (
@@ -28,7 +28,14 @@ export default function App() {
   const [health, setHealth] = useState(null);
   const [view, setView] = useState("ask");
   const [lang, setLang] = useState("auto");
-  const [profile, setProfile] = useState({ location: "Ganaur, Sonipat", crop: "Tomato", cost: 0.5, speak: true });
+  const [profile, setProfile] = useState({ location: "", coords: null, speak: true });
+  // Conversation memory: what the agent has learned from the farmer, and its last question
+  const [known, setKnown] = useState({});
+  const [asked, setAsked] = useState(null);
+  const [chat, setChat] = useState([]);
+  const [pending, setPending] = useState(null);
+  function resetChat() { setKnown({}); setAsked(null); setChat([]); setPending(null); }
+  const [geo, setGeo] = useState({ status: "idle" });
   const [steps, setSteps] = useState([]);
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
@@ -36,8 +43,33 @@ export default function App() {
 
   useEffect(() => { getHealth().then(setHealth).catch(() => setHealth({})); }, []);
 
-  async function onAsk(query, audioBlob) {
+  // Live location: ask the device for GPS, then name the place via reverse geocoding (no hard-coded default).
+  function locateMe() {
+    if (!navigator.geolocation) { setGeo({ status: "unsupported" }); return; }
+    setGeo({ status: "locating" });
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+        setProfile((p) => ({ ...p, coords: { lat, lon, accuracy } }));
+        setGeo({ status: "ok" });
+        try {
+          const r = await reverseGeocode(lat, lon);
+          if (r.ok) {
+            const label = [r.place.name, r.place.district].filter(Boolean).join(", ");
+            setProfile((p) => (p.coords && p.coords.lat === lat ? { ...p, location: label } : p));
+          }
+        } catch { /* name is cosmetic; coordinates are what the agent uses */ }
+      },
+      (err) => setGeo({ status: err.code === 1 ? "denied" : "error", message: err.message }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 },
+    );
+  }
+  useEffect(() => { locateMe(); }, []);
+
+  async function onAsk(query, audioBlob, fresh = false) {
     if (running) return;
+    const k = fresh ? {} : known, a = fresh ? null : asked, h = fresh ? [] : chat;
+    if (fresh) resetChat();
     setRunning(true);
     setError("");
     setSteps([]);
@@ -45,13 +77,25 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
     try {
       await askAgent(
-        { query: query || "", location: profile.location, crop: profile.crop, lang, cost: profile.cost, speak: profile.speak },
+        { query: query || "", location: profile.coords ? "" : profile.location, lat: profile.coords?.lat, lon: profile.coords?.lon,
+          history: JSON.stringify(h), known: JSON.stringify(k), asked: a || "", lang, speak: profile.speak },
         audioBlob,
         (ev) => {
           if (ev.type === "step") setSteps((s) => [...s, ev.step]);
           if (ev.type === "result") {
-            setResult(ev.result);
-            setTimeout(() => setView("dashboard"), 900);
+            const r = ev.result;
+            const said = query || r.plan?.transcript || "🎙️";
+            setChat([...h, { role: "farmer", text: said }, { role: "agent", text: r.advisory?.summary || "" }]);
+            setKnown(r.slots || {});
+            setAsked(r.asked || null);
+            if (r.status === "need_info") {
+              setPending(r);
+              setTimeout(() => setView("ask"), 600);
+            } else {
+              setPending(null);
+              setResult(r);
+              setTimeout(() => setView("dashboard"), 900);
+            }
           }
           if (ev.type === "error") setError(`Agent error: ${ev.error}`);
         },
@@ -66,9 +110,9 @@ export default function App() {
     <div className="min-h-screen bg-paper">
       <Header view={view} setView={setView} health={health} lang={lang} setLang={setLang} hasResult={!!result} running={running} />
       <main className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 md:px-8 lg:grid-cols-[320px_1fr]">
-        <Sidebar profile={profile} setProfile={setProfile} place={result?.place} />
+        <Sidebar profile={profile} setProfile={setProfile} place={result?.place} geo={geo} onLocate={locateMe} known={known} onReset={resetChat} />
         <div className="order-1 min-w-0 lg:order-2">
-          {view === "ask" && <AskView onAsk={onAsk} running={running} result={result} />}
+          {view === "ask" && <AskView onAsk={onAsk} running={running} result={result} chat={chat} pending={pending} />}
           {view === "trace" && (steps.length || running || error
             ? <TraceView steps={steps} running={running} result={running ? null : result} error={error} onOpenDashboard={() => setView("dashboard")} />
             : <EmptyState what="agent trace" hi="एजेंट ट्रेस" onAsk={() => setView("ask")} />)}

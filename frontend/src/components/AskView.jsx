@@ -9,7 +9,7 @@ const EXAMPLES = [
   ["🌱", "Where should I sell my paddy for the best price?", "Best paddy mandi"],
 ];
 
-export default function AskView({ onAsk, running, result }) {
+export default function AskView({ onAsk, running, result, chat = [], pending = null }) {
   const [text, setText] = useState("");
   const [rec, setRec] = useState(null);
   const [secs, setSecs] = useState(0);
@@ -25,7 +25,8 @@ export default function AskView({ onAsk, running, result }) {
       clearInterval(timer.current);
       const blob = await rec.stop();
       setRec(null);
-      onAsk(text, blob);
+      onAsk("", blob);
+      setText("");
       return;
     }
     try {
@@ -74,8 +75,22 @@ export default function AskView({ onAsk, running, result }) {
         </p>
         {micError && <p className="relative mt-2 text-sm text-red-600">{micError}</p>}
 
+        {chat.length > 0 && (
+          <div className="relative mx-auto mt-6 max-w-3xl space-y-2 text-left">
+            {chat.slice(-6).map((m, i) => (
+              <div key={i} className={`flex ${m.role === "farmer" ? "justify-end" : "justify-start"}`}>
+                <div className={`hi max-w-[85%] rounded-2xl px-4 py-2 text-[15px] ${
+                  m.role === "farmer" ? "bg-forest-800 text-white" : "border border-forest-100 bg-forest-50 text-slate-900"}`}>
+                  {m.role === "agent" ? "🤖 " : ""}{m.text}
+                </div>
+              </div>
+            ))}
+            {pending?.tts && <audio autoPlay src={`data:audio/mp3;base64,${pending.tts}`} className="hidden" />}
+          </div>
+        )}
+
         <form
-          onSubmit={(e) => { e.preventDefault(); if (!running) onAsk(text, null); }}
+          onSubmit={(e) => { e.preventDefault(); if (!running && text.trim()) { onAsk(text, null); setText(""); } }}
           className="relative mx-auto mt-8 flex max-w-3xl flex-col gap-2 rounded-2xl border border-forest-100 bg-white p-2 shadow-card sm:flex-row"
         >
           <div className="flex flex-1 items-center gap-2 px-3">
@@ -83,7 +98,7 @@ export default function AskView({ onAsk, running, result }) {
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="कल टमाटर पर दवा छिड़कूं? और कहाँ बेचूं?"
+              placeholder={pending ? "अपना जवाब लिखें या बोलें… / Type or speak your answer…" : "कल टमाटर पर दवा छिड़कूं? और कहाँ बेचूं?"}
               className="hi w-full bg-transparent py-3 text-lg outline-none"
             />
           </div>
@@ -101,7 +116,7 @@ export default function AskView({ onAsk, running, result }) {
             <button
               key={q}
               disabled={running}
-              onClick={() => { setText(q); onAsk(q, null); }}
+              onClick={() => { setText(""); onAsk(q, null, true); }}
               className="hi rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:border-forest-600"
             >
               {e} {q} <span className="text-forest-700">({en})</span>

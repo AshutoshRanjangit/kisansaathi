@@ -99,10 +99,10 @@ def template_draft(facts: dict, analysis: dict, lang: str) -> dict:
         if has_market:
             actions.append({"title": "कहाँ बेचें", "detail": (
                 "{best_mandi} ({best_mandi_district}) — भाव {best_modal_price} ₹/क्विंटल, दूरी {best_distance_km} किमी, "
-                "भाड़ा घटाकर {best_net_price} ₹/क्विंटल।" + (" नज़दीकी मंडी से {extra_gain} ₹/क्विंटल ज़्यादा।" if gain else ""))})
+                "{net_label} {best_net_price} ₹/क्विंटल।" + (" नज़दीकी मंडी से {extra_gain} ₹/क्विंटल ज़्यादा।" if gain else ""))})
         summary = ("{location} में {crop} के लिए: " + ("छिड़काव {spray_window} पर करें। " if has_spray else "अभी छिड़काव टालें। ")
                    + IRRIGATION_HI.get(irr_code, "") + "। "
-                   + ("सबसे अच्छा शुद्ध भाव {best_mandi} में {best_net_price} ₹/क्विंटल है।" if has_market else ""))
+                   + ("सबसे अच्छा भाव {best_mandi} में {best_net_price} ₹/क्विंटल {net_label} है।" if has_market else ""))
         tip = "अगली बारिश: {next_rain}। दवा का लेबल और खुराक ज़रूर पढ़ें।"
     else:
         actions = []
@@ -114,8 +114,8 @@ def template_draft(facts: dict, analysis: dict, lang: str) -> dict:
         if has_market:
             actions.append({"title": "Where to sell", "detail": (
                 "{best_mandi} ({best_mandi_district}) — modal {best_modal_price} ₹/qtl, {best_distance_km} km away, "
-                "{best_net_price} ₹/qtl after transport." + (" That is {extra_gain} ₹/qtl more than the nearest mandi." if gain else ""))})
+                "{best_net_price} ₹/qtl {net_label}." + (" That is {extra_gain} ₹/qtl more than the nearest mandi." if gain else ""))})
         summary = ("For {crop} near {location}: " + ("spray during {spray_window}. " if has_spray else "postpone spraying. ")
-                   + "{irrigation_decision}. " + ("Best net price: {best_net_price} ₹/qtl at {best_mandi}." if has_market else ""))
+                   + "{irrigation_decision}. " + ("Best price: {best_net_price} ₹/qtl {net_label} at {best_mandi}." if has_market else ""))
         tip = "Next rain: {next_rain}. Always follow the pesticide label dose."
     return {"summary": summary, "actions": actions, "tip": tip}

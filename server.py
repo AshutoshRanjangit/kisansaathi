@@ -22,7 +22,7 @@ from agent.graph import build_graph
 from core.config import get_secret, now_iso
 from core.llm import active_model, llm_available
 from core.voice import text_to_speech
-from tools.geocode import geocode_place
+from tools.geocode import geocode_place, reverse_geocode
 from tools.mandi import fetch_state
 from tools.names import COMMON_CROPS, state_candidates
 from tools.weather import get_forecast
@@ -42,10 +42,18 @@ def health():
             "model": active_model(), "time": now_iso(), "crops": COMMON_CROPS}
 
 
-@app.post("/api/warmup")
-def warmup(location: str = Form(...)):
+@app.get("/api/reverse")
+def reverse(lat: float, lon: float):
     try:
-        place = geocode_place(location)[0]
+        return {"ok": True, "place": reverse_geocode(lat, lon)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/api/warmup")
+def warmup(location: str = Form(""), lat: float | None = Form(None), lon: float | None = Form(None)):
+    try:
+        place = reverse_geocode(lat, lon) if lat is not None and lon is not None else geocode_place(location)[0]
     except Exception as exc:
         return JSONResponse({"ok": False, "error": f"Location not found: {exc}"}, status_code=200)
     out = {"ok": True, "place": place}
@@ -83,7 +91,8 @@ def _compact(final: dict, t_start: float) -> dict:
         "plan": final.get("plan"), "place": final.get("place"), "status": final.get("status"),
         "advisory": adv, "analysis": final.get("analysis") or {}, "facts": final.get("facts") or {},
         "ranked": final.get("ranked") or [], "commodity": final.get("commodity"),
-        "cost_per_qtl_km": final.get("cost_per_qtl_km"), "trace": final.get("trace", []),
+        "cost_per_qtl_km": final.get("cost_per_qtl_km"), "slots": final.get("slots") or {},
+        "asked": final.get("asked"), "trace": final.get("trace", []),
         "warnings": final.get("warnings", []), "sources": final.get("sources", []),
         "series": series, "current": current, "model": active_model(),
         "total_ms": int((time.perf_counter() - t_start) * 1000),
@@ -91,13 +100,23 @@ def _compact(final: dict, t_start: float) -> dict:
 
 
 @app.post("/api/ask")
-async def ask(query: str = Form(""), location: str = Form("Ganaur, Sonipat"), crop: str = Form("Tomato"),
-              lang: str = Form("auto"), cost: float = Form(0.5), speak: bool = Form(True),
+async def ask(query: str = Form(""), location: str = Form(""),
+              lat: float | None = Form(None), lon: float | None = Form(None),
+              history: str = Form("[]"), known: str = Form("{}"), asked: str = Form(""),
+              lang: str = Form("auto"), speak: bool = Form(True),
               audio: UploadFile | None = File(None)):
     audio_bytes = await audio.read() if audio else None
+
+    def _json(text, default):
+        try:
+            return json.loads(text) if text else default
+        except ValueError:
+            return default
+
     inputs = {"query": query, "audio": audio_bytes or None,
               "audio_mime": (audio.content_type if audio else None) or "audio/wav",
-              "ui_location": location, "ui_crop": crop, "ui_lang": lang, "cost_per_qtl_km": cost,
+              "ui_location": location, "ui_lat": lat, "ui_lon": lon, "ui_lang": lang,
+              "history": _json(history, []), "known": _json(known, {}), "asked": asked or None,
               "trace": [], "warnings": [], "sources": []}
 
     def events():

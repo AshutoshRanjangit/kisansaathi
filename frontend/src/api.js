@@ -3,17 +3,28 @@ export async function getHealth() {
   return r.json();
 }
 
-export async function warmup(location) {
+function formOf(fields) {
   const fd = new FormData();
-  fd.append("location", location);
+  Object.entries(fields).forEach(([k, v]) => {
+    if (v !== null && v !== undefined && v !== "") fd.append(k, String(v));
+  });
+  return fd;
+}
+
+export async function reverseGeocode(lat, lon) {
+  const r = await fetch(`/api/reverse?lat=${lat}&lon=${lon}`);
+  return r.json();
+}
+
+export async function warmup(profile) {
+  const fd = formOf({ location: profile.location, lat: profile.coords?.lat, lon: profile.coords?.lon });
   const r = await fetch("/api/warmup", { method: "POST", body: fd });
   return r.json();
 }
 
 /** Streams agent steps (Server-Sent Events over a POST response). */
 export async function askAgent(fields, audioBlob, onEvent) {
-  const fd = new FormData();
-  Object.entries(fields).forEach(([k, v]) => fd.append(k, String(v)));
+  const fd = formOf(fields);
   if (audioBlob) fd.append("audio", audioBlob, "question.wav");
   const res = await fetch("/api/ask", { method: "POST", body: fd });
   if (!res.ok || !res.body) throw new Error(`Server error ${res.status}`);

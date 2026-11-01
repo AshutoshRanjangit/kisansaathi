@@ -93,3 +93,50 @@ def geocode_districts(pairs: list[tuple[str, str]]) -> dict:
     with ThreadPoolExecutor(max_workers=8) as pool:
         coords = list(pool.map(lambda p: geocode_district(*p), unique))
     return {d: c for (d, _), c in zip(unique, coords)}
+
+
+NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse"
+BDC_REVERSE = "https://api.bigdatacloud.net/data/reverse-geocode-client"
+
+
+def reverse_geocode(lat: float, lon: float) -> dict:
+    """GPS coordinates -> {name, lat, lon, district, state, source}. Nominatim first (rich village
+    names), BigDataCloud keyless endpoint as fallback. Cached on disk by ~100 m grid cell."""
+    key = f"r::{round(lat, 3)}::{round(lon, 3)}"
+    with _lock:
+        if key in _cache:
+            return {**_cache[key], "lat": lat, "lon": lon}
+    place = None
+    try:
+        d = get_json(NOMINATIM_REVERSE, {"lat": lat, "lon": lon, "format": "jsonv2", "zoom": 14,
+                                         "accept-language": "en", "addressdetails": 1}, timeout=6, retries=1)
+        a = d.get("address") or {}
+        if a.get("state"):
+            place = {
+                "name": a.get("village") or a.get("town") or a.get("city") or a.get("suburb")
+                        or a.get("hamlet") or a.get("county") or d.get("name") or "Your location",
+                "district": a.get("state_district") or a.get("county") or a.get("city_district"),
+                "state": a.get("state"), "source": "OpenStreetMap Nominatim (reverse)",
+            }
+    except Exception:
+        pass
+    if not place:
+        try:
+            d = get_json(BDC_REVERSE, {"latitude": lat, "longitude": lon, "localityLanguage": "en"},
+                         timeout=6, retries=1)
+            admin = (d.get("localityInfo") or {}).get("administrative") or []
+            district = next((x.get("name") for x in admin if x.get("adminLevel") == 5), None)
+            if d.get("principalSubdivision"):
+                place = {"name": d.get("locality") or d.get("city") or "Your location", "district": district,
+                         "state": d.get("principalSubdivision"), "source": "BigDataCloud (reverse)"}
+        except Exception:
+            pass
+    if not place:
+        raise ValueError("reverse geocoding unavailable")
+    if place.get("district"):
+        place["district"] = place["district"].replace(" District", "").replace(" district", "").strip()
+    with _lock:
+        _cache[key] = place
+        snapshot = dict(_cache)
+    write_json(_FILE, snapshot)
+    return {**place, "lat": lat, "lon": lon, "population": 0}

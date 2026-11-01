@@ -10,9 +10,9 @@ from agent.prompts import PLANNER_PROMPT, SYNTH_PROMPT
 from agent.state import AgentState, step
 from core.llm import LLMError, active_model, generate_json, llm_available
 from tools import engine
-from tools.geocode import geocode_districts, geocode_place
+from tools.geocode import geocode_districts, geocode_place, reverse_geocode
 from tools.mandi import fetch_state
-from tools.names import HINDI_CROPS, NEIGHBOURS, match_commodity, state_candidates
+from tools.names import COMMON_CROPS, HINDI_CROPS, NEIGHBOURS, match_commodity, state_candidates
 from tools.weather import get_forecast
 
 RADII = [50, 120, 250, None]  # km; None = whole state
@@ -25,52 +25,190 @@ def _ms(t0):
 
 
 # --------------------------------------------------------------------------- 1. planner
+DONT_KNOW = re.compile(r"(pata nahi|pata nahin|पता नहीं|मालूम नहीं|nahi pata|don'?t know|dont know|not sure|skip|no idea)", re.I)
+NUM = re.compile(r"\d+(?:\.\d+)?")
+EN_CROPS = {c.lower(): c for c in COMMON_CROPS}
+
+
+def _rule_parse(query: str, asked: str | None) -> dict:
+    """Deterministic fallback when Gemini is unavailable."""
+    q = query.strip()
+    crop = None
+    for hi, en in HINDI_CROPS.items():
+        if hi in q:
+            crop = en
+    for low, en in EN_CROPS.items():
+        if re.search(rf"\b{re.escape(low)}\b", q.lower()):
+            crop = en
+    if not crop and asked == "crop" and q and len(q.split()) <= 3:
+        crop = q  # treat a short answer as the crop name; fuzzy-matched against mandi data later
+    transport = {"cost_per_km": None, "load_quintals": None, "cost_per_qtl_km": None, "unknown": False}
+    if asked == "transport":
+        if DONT_KNOW.search(q):
+            transport["unknown"] = True
+        else:
+            nums = [float(n) for n in NUM.findall(q)]
+            if len(nums) >= 2:
+                transport["cost_per_km"], transport["load_quintals"] = nums[0], nums[1]
+            elif len(nums) == 1:
+                transport["cost_per_km"] = nums[0]
+    elif asked == "transport_load":
+        nums = [float(n) for n in NUM.findall(q)]
+        if nums:
+            transport["load_quintals"] = nums[0]
+        elif DONT_KNOW.search(q):
+            transport["unknown"] = True
+    location = q if asked == "location" and q else None
+    return {"transcript": q, "language": "hi" if DEVANAGARI.search(q) else "en", "crop": crop,
+            "location": location, "intents": ALL_INTENTS, "question": q or "general advisory", "transport": transport}
+
+
+def _merge_slots(known: dict, plan: dict, asked: str | None) -> dict:
+    slots = dict(known or {})
+    if plan.get("crop"):
+        slots["crop"] = plan["crop"]
+    if plan.get("location"):
+        slots["location"] = plan["location"]
+    if not asked or not slots.get("intents"):  # a fresh question sets the goal; an answer keeps it
+        slots["intents"] = plan.get("intents") or ALL_INTENTS
+        slots["question"] = plan.get("question") or slots.get("question")
+    slots["language"] = plan.get("language") or slots.get("language") or "en"
+    t = plan.get("transport") or {}
+    for k in ("cost_per_km", "load_quintals", "cost_per_qtl_km"):
+        try:
+            if t.get(k) is not None and float(t[k]) > 0:
+                slots[k] = float(t[k])
+        except (TypeError, ValueError):
+            pass
+    if t.get("unknown"):
+        slots["transport_unknown"] = True
+    if not slots.get("cost_per_qtl_km") and slots.get("cost_per_km") and slots.get("load_quintals"):
+        slots["cost_per_qtl_km"] = round(slots["cost_per_km"] / slots["load_quintals"], 3)
+    return slots
+
+
 def planner(state: AgentState) -> dict:
     t0 = time.perf_counter()
     query = (state.get("query") or "").strip()
     audio = state.get("audio")
+    asked = state.get("asked") or None
+    known = state.get("known") or {}
     ui_lang = state.get("ui_lang", "auto")
     plan, how, warnings = None, "", []
 
     if llm_available() and (query or audio):
+        history = "\n".join(f"{m.get('role', '?')}: {m.get('text', '')}" for m in (state.get("history") or [])[-8:]) or "(none)"
         try:
             plan = generate_json(
-                PLANNER_PROMPT.format(query=query.replace('"', "'"), ui_crop=state.get("ui_crop") or "",
-                                      ui_location=state.get("ui_location") or ""),
-                audio=audio, audio_mime=state.get("audio_mime", "audio/wav"))
-            how = f"Gemini ({active_model()}) parsed " + ("voice" if audio else "text")
+                PLANNER_PROMPT.format(query=query.replace('"', "'"), known=json.dumps(known, ensure_ascii=False),
+                                      asked=asked or "nothing yet", history=history),
+                audio=audio, audio_mime=state.get("audio_mime", "audio/wav"),
+                budget_s=18 if audio else 12)
+            how = f"Gemini ({active_model()}) understood " + ("voice" if audio else "text")
         except LLMError as exc:
-            warnings.append(f"Planner LLM failed ({exc}); used rule-based parser.")
+            warnings.append(f"Gemini planner unavailable ({exc}) — used rule-based parser.")
     elif audio and not llm_available():
-        warnings.append("Voice needs the Gemini key; using sidebar crop & location.")
+        warnings.append("Voice needs the Gemini key — please type your answer.")
 
-    if not plan:  # deterministic fallback parser
-        crop = state.get("ui_crop")
-        for hi, en in HINDI_CROPS.items():
-            if hi in query:
-                crop = en
-        plan = {"transcript": query, "language": "hi" if DEVANAGARI.search(query) else "en",
-                "crop": crop, "location": None, "intents": ALL_INTENTS, "question": query or "general advisory"}
+    if not plan:
+        plan = _rule_parse(query, asked)
         how = how or "rule-based parser"
 
-    plan["crop"] = plan.get("crop") or state.get("ui_crop")
-    plan["location"] = plan.get("location") or state.get("ui_location")
-    plan["intents"] = [i for i in (plan.get("intents") or ALL_INTENTS) if i in ALL_INTENTS] or ALL_INTENTS
-    if ui_lang in ("hi", "en"):
-        plan["language"] = ui_lang
-    plan["language"] = "hi" if plan.get("language") == "hi" else "en"
+    slots = _merge_slots(known, plan, asked)
+    plan["crop"] = slots.get("crop")
+    plan["intents"] = [i for i in (slots.get("intents") or ALL_INTENTS) if i in ALL_INTENTS] or ALL_INTENTS
+    plan["question"] = slots.get("question") or plan.get("question")
+    plan["language"] = ui_lang if ui_lang in ("hi", "en") else ("hi" if slots.get("language") == "hi" else "en")
 
-    return {"plan": plan, "warnings": warnings,
-            "trace": [step("planner", f"{how}: crop={plan['crop']}, place={plan['location']}, "
-                                      f"intents={','.join(plan['intents'])}, lang={plan['language']}", _ms(t0))]}
+    # Location priority: place named in the conversation > device GPS > place typed in the app
+    named = (slots.get("location") or "").strip()
+    if named:
+        plan["location"], plan["location_source"] = named, "named by farmer"
+    elif state.get("ui_lat") is not None and state.get("ui_lon") is not None:
+        plan["location"], plan["location_source"] = None, "device GPS"
+    elif (state.get("ui_location") or "").strip():
+        plan["location"], plan["location_source"] = state["ui_location"].strip(), "typed in app"
+    else:
+        plan["location"], plan["location_source"] = None, "none"
+
+    cost = slots.get("cost_per_qtl_km")
+    known_txt = [f"crop={plan['crop'] or '?'}", f"place={plan['location'] or plan['location_source']}",
+                 f"transport={'₹%s/qtl/km' % cost if cost else ('not given' if slots.get('transport_unknown') else '?')}"]
+    return {"plan": plan, "slots": slots, "cost_per_qtl_km": cost, "warnings": warnings,
+            "trace": [step("planner", f"{how}: {', '.join(known_txt)}, intents={','.join(plan['intents'])}, "
+                                      f"lang={plan['language']}", _ms(t0))]}
+
+
+# --------------------------------------------------------------------------- 1b. slot check: ask the farmer?
+def _missing_slot(state: AgentState) -> str | None:
+    plan, slots = state["plan"], state.get("slots") or {}
+    if not plan.get("crop"):
+        return "crop"
+    if plan.get("location_source") == "none":
+        return "location"
+    if "sell" in plan["intents"] and not slots.get("cost_per_qtl_km") and not slots.get("transport_unknown"):
+        return "transport_load" if slots.get("cost_per_km") else "transport"
+    return None
+
+
+def check_slots(state: AgentState) -> dict:
+    missing = _missing_slot(state)
+    if missing:
+        return {"status": "need_info", "asked": missing,
+                "trace": [step("check_slots", f"missing '{missing}' → ask the farmer before fetching data", 0, "warn")]}
+    return {"asked": None, "trace": [step("check_slots", "crop, location and transport known → proceed", 0)]}
+
+
+def route_slots(state: AgentState) -> str:
+    return "ask_farmer" if state.get("status") == "need_info" else "locate"
+
+
+QUESTIONS = {
+    "crop": ("आप किस फसल के बारे में पूछ रहे हैं? (जैसे टमाटर, गेहूं, धान)",
+             "Which crop is this about? (e.g. tomato, wheat, paddy)"),
+    "location": ("आपका खेत किस गाँव/कस्बे और ज़िले में है? (या लोकेशन की अनुमति दें)",
+                 "Where is your farm — village/town and district? (or allow location access)"),
+    "transport": ("मंडी तक माल ले जाने में गाड़ी (ट्रैक्टर/ट्रक) का किराया प्रति किलोमीटर कितना लगता है, और एक बार में कितने क्विंटल ले जाते हैं? "
+                  "पता न हो तो 'पता नहीं' कहें।",
+                  "To compare mandis after transport: what does your vehicle (tractor/truck) cost per km, and how many quintals "
+                  "do you carry per trip? Say 'don't know' to skip."),
+    "transport_load": ("एक बार में गाड़ी में कितने क्विंटल माल जाता है?", "How many quintals do you carry per trip?"),
+}
+
+
+def ask_farmer(state: AgentState) -> dict:
+    slot = state.get("asked") or "crop"
+    lang = state["plan"].get("language", "en")
+    hi, en = QUESTIONS[slot]
+    text = hi if lang == "hi" else en
+    return {"advisory": {"summary": text, "actions": [], "tip": "", "verified": True, "by": "agent question", "question": True},
+            "trace": [step("ask_farmer", f"asked the farmer about {slot}", 0)]}
 
 
 # --------------------------------------------------------------------------- 2. locate
 def locate(state: AgentState) -> dict:
     t0 = time.perf_counter()
-    loc = state["plan"].get("location")
+    plan = state["plan"]
+    if plan.get("location_source") == "device GPS":
+        lat, lon = float(state["ui_lat"]), float(state["ui_lon"])
+        try:
+            place = reverse_geocode(lat, lon)
+        except Exception as exc:
+            return {"status": "need_location", "warnings": [f"Could not identify your GPS location ({exc}) — please type your village, district."],
+                    "trace": [step("locate", f"reverse geocoding failed for ({lat:.3f}, {lon:.3f})", _ms(t0), "fail")]}
+        return {"status": "ok", "place": place, "place_candidates": [place],
+                "sources": [{"name": place.get("source", "Reverse geocoding"),
+                             "detail": f"device GPS → {place['name']}, {place.get('district')}, {place['state']}"}],
+                "trace": [step("locate", f"device GPS ({lat:.3f}, {lon:.3f}) → {place['name']}, "
+                                         f"{place.get('district')}, {place['state']}", _ms(t0))]}
+
+    loc = plan.get("location")
+    if not loc:
+        return {"status": "need_location", "place_candidates": [],
+                "warnings": ["No location yet — allow location access or type your village, district."],
+                "trace": [step("locate", "no GPS and no place given", _ms(t0), "fail")]}
     try:
-        candidates = geocode_place(loc) if loc else []
+        candidates = geocode_place(loc)
     except Exception as exc:
         return {"status": "need_location", "warnings": [f"Geocoder unavailable: {exc}"],
                 "trace": [step("locate", f"geocoder error: {exc}", _ms(t0), "fail")]}
@@ -81,8 +219,8 @@ def locate(state: AgentState) -> dict:
     place = candidates[0]
     return {"status": "ok", "place": place, "place_candidates": candidates[:5],
             "sources": [{"name": "Open-Meteo Geocoding API", "detail": f"{place['name']}, {place['district']}, {place['state']}"}],
-            "trace": [step("locate", f"{place['name']}, {place.get('district')}, {place.get('state')} "
-                                     f"({place['lat']:.3f}, {place['lon']:.3f})", _ms(t0))]}
+            "trace": [step("locate", f"{plan.get('location_source')}: {place['name']}, {place.get('district')}, "
+                                     f"{place.get('state')} ({place['lat']:.3f}, {place['lon']:.3f})", _ms(t0))]}
 
 
 # --------------------------------------------------------------------------- 3. parallel fetch
@@ -190,7 +328,7 @@ def geocode_mandis(state: AgentState) -> dict:
     pairs = [(r["district"], r["state"]) for r in rows if r.get("district")]
     coords = geocode_districts(pairs)
     table = engine.market_table(rows, state["place"]["lat"], state["place"]["lon"], coords,
-                                state.get("cost_per_qtl_km", 0.5))
+                                state.get("cost_per_qtl_km"))
     located = sum(1 for c in coords.values() if c)
     return {"district_coords": coords, "market_table": table, "radius_idx": 0,
             "trace": [step("geocode_mandis", f"{len(table)} mandis; {located}/{len(coords)} districts "
@@ -271,6 +409,11 @@ def run_engine(state: AgentState) -> dict:
             facts.update(nearest_mandi=n["market"], nearest_net_price=n["net_price"])
         if summary.get("extra_gain_per_qtl"):
             facts["extra_gain"] = summary["extra_gain_per_qtl"]
+        if state.get("cost_per_qtl_km"):
+            facts["net_label"] = "भाड़ा घटाकर" if lang == "hi" else "after transport"
+        else:
+            facts["net_label"] = "(भाड़ा शामिल नहीं)" if lang == "hi" else "(transport not included)"
+            warnings.append("Transport cost not given — mandis ranked by price; distances shown so you can judge.")
     elif state["plan"].get("crop"):
         warnings.append(f"No mandi prices found today for {state['plan']['crop']}.")
 
@@ -301,12 +444,12 @@ def synthesize(state: AgentState) -> dict:
                 facts=json.dumps({f"{{{k}}}": v for k, v in facts.items()}, ensure_ascii=False, indent=1),
                 irrigation_decision=analysis.get("irrigation", {}).get("decision", "unavailable"),
                 blockers=", ".join(analysis.get("spray", {}).get("blockers", [])) or "none",
-                warnings="; ".join(state.get("warnings", [])) or "none"), temperature=0.3)
+                warnings="; ".join(state.get("warnings", [])) or "none"), temperature=0.3, budget_s=20)
             return {"draft": {**draft, "_by": "llm"},
                     "trace": [step("synthesize", f"Gemini ({active_model()}) wrote advisory with placeholders "
                                                  f"(no raw numbers)", _ms(t0))]}
         except LLMError as exc:
-            note = f"LLM failed ({exc}) → deterministic template"
+            note = f"Gemini unavailable ({exc}) → verified deterministic template"
     else:
         note = "no LLM key → deterministic template"
     return {"draft": {**template_draft(facts, analysis, lang), "_by": "template"},

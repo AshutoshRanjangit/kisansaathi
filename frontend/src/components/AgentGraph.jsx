@@ -4,19 +4,21 @@ import React from "react";
 const W = 340;
 const NODES = {
   planner: { x: 120, y: 24, label: "Planner · Gemini" },
-  locate: { x: 120, y: 74, label: "Geocode farmer" },
-  fetch_data: { x: 120, y: 124, label: "Parallel fetch ∥" },
-  resolve_commodity: { x: 120, y: 174, label: "Verify commodity" },
-  expand_states: { x: 270, y: 174, label: "Neighbour states", side: true },
-  geocode_mandis: { x: 120, y: 224, label: "Geocode mandis" },
-  rank_markets: { x: 120, y: 274, label: "Rank net price" },
-  widen_radius: { x: 270, y: 274, label: "Widen radius", side: true },
-  engine: { x: 120, y: 324, label: "Deterministic engine" },
-  synthesize: { x: 120, y: 374, label: "Synthesizer · Gemini" },
-  guardrail: { x: 120, y: 424, label: "Guardrail verifier" },
+  check_slots: { x: 120, y: 74, label: "Know crop/place/cost?" },
+  ask_farmer: { x: 270, y: 74, label: "Ask farmer", side: true },
+  locate: { x: 120, y: 124, label: "Geocode farmer" },
+  fetch_data: { x: 120, y: 174, label: "Parallel fetch ∥" },
+  resolve_commodity: { x: 120, y: 224, label: "Verify commodity" },
+  expand_states: { x: 270, y: 224, label: "Neighbour states", side: true },
+  geocode_mandis: { x: 120, y: 274, label: "Geocode mandis" },
+  rank_markets: { x: 120, y: 324, label: "Rank net price" },
+  widen_radius: { x: 270, y: 324, label: "Widen radius", side: true },
+  engine: { x: 120, y: 374, label: "Deterministic engine" },
+  synthesize: { x: 120, y: 424, label: "Synthesizer · Gemini" },
+  guardrail: { x: 120, y: 474, label: "Guardrail verifier" },
 };
 const EDGES = [
-  ["planner", "locate"], ["locate", "fetch_data"], ["fetch_data", "resolve_commodity"],
+  ["planner", "check_slots"], ["check_slots", "locate"], ["check_slots", "ask_farmer", "loop"], ["locate", "fetch_data"], ["fetch_data", "resolve_commodity"],
   ["resolve_commodity", "geocode_mandis"], ["geocode_mandis", "rank_markets"], ["rank_markets", "engine"],
   ["engine", "synthesize"], ["synthesize", "guardrail"],
   ["resolve_commodity", "expand_states", "loop"], ["rank_markets", "widen_radius", "loop"],
@@ -35,7 +37,7 @@ export default function AgentGraph({ visited, selfCorrect, active }) {
   const hot = (a, b) => seen.has(a) && seen.has(b);
 
   return (
-    <svg viewBox={`0 0 ${W + 20} 450`} className="w-full">
+    <svg viewBox={`0 0 ${W + 20} 500`} className="w-full">
       <defs>
         {["g", "a", "s"].map((id) => (
           <marker key={id} id={`arrow-${id}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">

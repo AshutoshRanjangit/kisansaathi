@@ -15,8 +15,9 @@ export default function MandiMap({ place, mandis }) {
       className="h-[340px] w-full"
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        maxZoom={19}
       />
       {pts.slice(0, 3).map((m) => (
         <Polyline key={`l-${m.market}`} positions={[[place.lat, place.lon], [m.lat, m.lon]]}
