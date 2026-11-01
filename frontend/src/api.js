@@ -43,3 +43,11 @@ export async function askAgent(fields, audioBlob, onEvent) {
     }
   }
 }
+
+export async function getOverview(profile) {
+  const q = new URLSearchParams();
+  if (profile.coords) { q.set("lat", profile.coords.lat); q.set("lon", profile.coords.lon); }
+  else q.set("location", profile.location || "");
+  const r = await fetch(`/api/overview?${q.toString()}`);
+  return r.json();
+}

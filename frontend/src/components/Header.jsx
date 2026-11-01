@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import { Sprout } from "lucide-react";
 
 const TABS = [
-  { id: "ask", en: "1. Ask", hi: "प्रश्न" },
-  { id: "trace", en: "2. Live Trace", hi: "एजेंट ट्रेस" },
-  { id: "dashboard", en: "3. Advisory Dashboard", hi: "सलाह डैशबोर्ड" },
+  { id: "home", en: "Home", hi: "होम" },
+  { id: "ask", en: "Ask", hi: "पूछें" },
+  { id: "trace", en: "Live Trace", hi: "ट्रेस" },
+  { id: "dashboard", en: "Dashboard", hi: "डैशबोर्ड" },
 ];
 
 function Dot({ ok, label }) {

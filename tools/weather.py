@@ -10,16 +10,16 @@ HOURLY = [
     "temperature_2m", "relative_humidity_2m", "precipitation_probability", "precipitation",
     "wind_speed_10m", "wind_gusts_10m", "vapour_pressure_deficit", "et0_fao_evapotranspiration",
     "soil_moisture_0_to_1cm", "soil_moisture_1_to_3cm", "soil_moisture_3_to_9cm",
-    "soil_moisture_9_to_27cm", "soil_temperature_0cm", "is_day",
+    "soil_moisture_9_to_27cm", "soil_temperature_0cm", "is_day", "wind_direction_10m", "cloud_cover",
 ]
 DAILY = [
     "temperature_2m_max", "temperature_2m_min", "precipitation_sum",
-    "precipitation_probability_max", "et0_fao_evapotranspiration",
+    "precipitation_probability_max", "et0_fao_evapotranspiration", "weather_code",
 ]
 
 
 def get_forecast(lat: float, lon: float) -> dict:
-    key = f"wx_{round(lat, 2)}_{round(lon, 2)}"
+    key = f"wx2_{round(lat, 2)}_{round(lon, 2)}"
     hit = MEM.get(key, ttl_seconds=1800)
     if hit:
         return {**hit, "cache": "memory (≤30 min old)"}

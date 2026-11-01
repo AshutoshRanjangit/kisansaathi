@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import AskView from "./components/AskView.jsx";
 import TraceView from "./components/TraceView.jsx";
 import Dashboard from "./components/Dashboard.jsx";
+import Home from "./components/Home.jsx";
 import { askAgent, getHealth, reverseGeocode } from "./api.js";
 
 function EmptyState({ what, hi, onAsk }) {
@@ -26,7 +27,7 @@ function EmptyState({ what, hi, onAsk }) {
 
 export default function App() {
   const [health, setHealth] = useState(null);
-  const [view, setView] = useState("ask");
+  const [view, setView] = useState("home");
   const [lang, setLang] = useState("auto");
   const [profile, setProfile] = useState({ location: "", coords: null, speak: true });
   // Conversation memory: what the agent has learned from the farmer, and its last question
@@ -114,6 +115,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#070d0b] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0d221a] via-[#070d0b] to-[#040605] text-slate-100">
       <Header view={view} setView={setView} health={health} lang={lang} setLang={setLang} hasResult={!!result} running={running} />
+      {view === "home" ? (
+        <main className="mx-auto max-w-[1600px] px-3 py-5 md:px-6">
+          <Home profile={profile} setProfile={setProfile} geo={geo} onLocate={locateMe} health={health}
+            onAskQuestion={(q) => { setView("ask"); if (q) onAsk(q, null, true); }} />
+        </main>
+      ) : (
       <main className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 md:px-8 lg:grid-cols-[320px_1fr]">
         <Sidebar profile={profile} setProfile={setProfile} place={result?.place} geo={geo} onLocate={locateMe} known={known} onReset={resetChat} />
         <div className="order-1 min-w-0 lg:order-2">
@@ -127,6 +134,7 @@ export default function App() {
             : <EmptyState what="advisory dashboard" hi="सलाह डैशबोर्ड" onAsk={() => setView("ask")} />)}
         </div>
       </main>
+      )}
       <footer className="mt-8 border-t border-emerald-950/40 bg-[#09120e]/60 px-4 py-4 text-center font-mono text-[11px] text-slate-500 backdrop-blur-md md:px-8">
         KisanSaathi · Live data: Agmarknet (data.gov.in) · Open-Meteo (weather, soil moisture, ET₀, VPD) · Built for Forge Gen-AI Buildathon
       </footer>

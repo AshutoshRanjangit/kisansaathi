@@ -204,3 +204,62 @@ def market_summary(ranked: list[dict]) -> dict:
     if nearest and best.get("net_price") is not None and nearest.get("net_price") is not None:
         gain = best["net_price"] - nearest["net_price"]
     return {"best": best, "nearest": nearest, "extra_gain_per_qtl": gain}
+
+
+# --------------------------------------------------------------------------- home overview helpers
+def spray_hour_flags(hourly: dict, horizon_h: int = 48) -> list[dict]:
+    """Per-hour spray suitability for the field-health grid: good / caution / avoid / night."""
+    r = SPRAY_RULES
+    times = hourly["time"]
+    i0 = _now_index(times)
+    out = []
+    for i in range(i0, min(len(times), i0 + horizon_h)):
+        if _val(hourly, "is_day", i) == 0:
+            out.append({"time": times[i], "status": "night", "reasons": ["night"]})
+            continue
+        reasons = []
+        pp = _val(hourly, "precipitation_probability", i) or 0
+        if pp > r["max_rain_probability_pct"] or _rainy(hourly, i):
+            reasons.append("rain")
+        if any(_rainy(hourly, j) for j in range(i + 1, min(len(times), i + 1 + r["rain_free_hours_after"]))):
+            reasons.append("rain soon")
+        wind = _val(hourly, "wind_speed_10m", i) or 0
+        if wind > r["max_wind_kmh"]:
+            reasons.append("wind")
+        temp = _val(hourly, "temperature_2m", i)
+        if temp is not None and not (r["min_temp_c"] <= temp <= r["max_temp_c"]):
+            reasons.append("temperature")
+        vpd = _val(hourly, "vapour_pressure_deficit", i)
+        if vpd is not None and not (r["vpd_range_kpa"][0] <= vpd <= r["vpd_range_kpa"][1]):
+            reasons.append("VPD")
+        if not reasons:
+            status = "good"
+        elif any(x.startswith("rain") for x in reasons) or len(reasons) > 1:
+            status = "avoid"
+        else:
+            status = "caution"
+        out.append({"time": times[i], "status": status, "reasons": reasons})
+    return out
+
+
+def readiness_score(hourly: dict, daily: dict, spray: dict, irrigation: dict) -> dict:
+    """Field readiness 0-10: mean of four transparent live indicators (each 0-10)."""
+    root = irrigation.get("root_zone_moisture_pct")
+    if root is None:
+        moisture = 5.0
+    else:
+        v = root / 100
+        moisture = 10.0 if 0.20 <= v <= 0.32 else max(0.0, 10 - abs(v - 0.26) * 60)
+    balance = irrigation.get("water_balance_3d_mm", 0)
+    water = 10.0 if balance >= -5 else max(0.0, 10 + (balance + 5) * (10 / 15))
+    n = len(spray.get("windows") or [])
+    spray_s = 10.0 if n >= 2 else 7.0 if n == 1 else 3.0
+    i0 = _now_index(hourly["time"])
+    temps = [t for t in (hourly.get("temperature_2m") or [])[i0:i0 + 48] if t is not None]
+    tmax = max(temps) if temps else 30
+    heat = 10.0 if tmax <= 32 else max(0.0, 10 - (tmax - 32) * 1.25)
+    parts = {"soil_moisture": round(moisture, 1), "water_balance": round(water, 1),
+             "spray_opportunity": round(spray_s, 1), "heat_stress": round(heat, 1)}
+    score = round(sum(parts.values()) / len(parts), 1)
+    label = "Good" if score >= 7 else "Fair" if score >= 5 else "Poor"
+    return {"score": score, "label": label, "parts": parts, "max_temp_48h": round(tmax)}

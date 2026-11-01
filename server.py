@@ -26,6 +26,8 @@ from tools.geocode import geocode_place, reverse_geocode
 from tools.mandi import fetch_state
 from tools.names import COMMON_CROPS, state_candidates
 from tools.weather import get_forecast
+from tools import engine as eng
+import statistics
 
 app = FastAPI(title="KisanSaathi API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -49,6 +51,52 @@ def reverse(lat: float, lon: float):
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
+
+
+@app.get("/api/overview")
+def overview(lat: float | None = None, lon: float | None = None, location: str = ""):
+    """Home screen: everything live for the farmer's location in one call (no question needed)."""
+    try:
+        place = reverse_geocode(lat, lon) if lat is not None and lon is not None else geocode_place(location)[0]
+    except Exception as exc:
+        return {"ok": False, "error": f"Location not found: {exc}"}
+    out = {"ok": True, "place": place, "fetched_at": now_iso()}
+    try:
+        wx = get_forecast(place["lat"], place["lon"])
+        h, d = wx["hourly"], wx["daily"]
+        i0 = eng._now_index(h["time"])
+        keys = ["temperature_2m", "relative_humidity_2m", "precipitation_probability", "precipitation", "wind_speed_10m",
+                "wind_direction_10m", "vapour_pressure_deficit", "cloud_cover", "soil_moisture_0_to_1cm",
+                "soil_moisture_3_to_9cm", "soil_moisture_9_to_27cm", "soil_temperature_0cm"]
+        win = {k: [x for x in (h.get(k) or [])[i0:i0 + 48] if x is not None] for k in keys}
+        out["current"] = {k: (h.get(k) or [None] * (i0 + 1))[i0] for k in keys}
+        out["range48"] = {k: {"min": min(v), "max": max(v)} for k, v in win.items() if v}
+        out["daily"] = {k: d.get(k) for k in ("time", "temperature_2m_max", "temperature_2m_min", "precipitation_sum",
+                                               "precipitation_probability_max", "et0_fao_evapotranspiration", "weather_code")}
+        spray = eng.spray_windows(h)
+        irr = eng.irrigation_advice(h, d)
+        out.update(spray=spray, spray_hours=eng.spray_hour_flags(h, 48), irrigation=irr,
+                   readiness=eng.readiness_score(h, d, spray, irr), weather_source=wx["cache"], weather_fetched=wx["fetched_at"])
+    except Exception as exc:
+        out["weather_error"] = str(exc)
+    try:
+        m = fetch_state(state_candidates(place.get("state")))
+        by = {}
+        for r in m["records"]:
+            if r.get("modal_price"):
+                by.setdefault(r["commodity"], []).append(r)
+        top = sorted(by.items(), key=lambda kv: len({x["market"] for x in kv[1]}), reverse=True)[:6]
+        out["mandi"] = {
+            "state": m["state"], "records": len(m["records"]), "commodities": len(by), "cache": m["cache"],
+            "fetched_at": m["fetched_at"], "date": (m["records"][0].get("arrival_date") if m["records"] else None),
+            "top": [{"commodity": c, "markets": len({x["market"] for x in rs}),
+                     "modal": round(statistics.median(x["modal_price"] for x in rs)),
+                     "min": round(min(x["modal_price"] for x in rs)), "max": round(max(x["modal_price"] for x in rs))}
+                    for c, rs in top],
+        }
+    except Exception as exc:
+        out["mandi_error"] = str(exc)
+    return out
 
 @app.post("/api/warmup")
 def warmup(location: str = Form(""), lat: float | None = Form(None), lon: float | None = Form(None)):
