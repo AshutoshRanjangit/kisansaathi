@@ -4,6 +4,7 @@ import React from "react";
 const W = 340;
 const NODES = {
   planner: { x: 120, y: 24, label: "Planner · Gemini" },
+  converse: { x: 270, y: 24, label: "Chat reply", side: true },
   check_slots: { x: 120, y: 74, label: "Know crop/place/cost?" },
   ask_farmer: { x: 270, y: 74, label: "Ask farmer", side: true },
   locate: { x: 120, y: 124, label: "Geocode farmer" },
@@ -18,7 +19,7 @@ const NODES = {
   guardrail: { x: 120, y: 474, label: "Guardrail verifier" },
 };
 const EDGES = [
-  ["planner", "check_slots"], ["check_slots", "locate"], ["check_slots", "ask_farmer", "loop"], ["locate", "fetch_data"], ["fetch_data", "resolve_commodity"],
+  ["planner", "check_slots"], ["planner", "converse", "loop"], ["check_slots", "locate"], ["check_slots", "ask_farmer", "loop"], ["locate", "fetch_data"], ["fetch_data", "resolve_commodity"],
   ["resolve_commodity", "geocode_mandis"], ["geocode_mandis", "rank_markets"], ["rank_markets", "engine"],
   ["engine", "synthesize"], ["synthesize", "guardrail"],
   ["resolve_commodity", "expand_states", "loop"], ["rank_markets", "widen_radius", "loop"],

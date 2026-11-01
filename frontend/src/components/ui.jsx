@@ -3,6 +3,7 @@ import { CheckCircle2, AlertTriangle, XCircle, RefreshCw } from "lucide-react";
 
 export const NODE_META = {
   planner: { en: "Planner (Gemini)", hi: "योजना", tag: "INTENT_PARSE" },
+  converse: { en: "Conversation (Gemini)", hi: "बातचीत", tag: "CHAT" },
   check_slots: { en: "Check what's known", hi: "जानकारी जाँच", tag: "SLOT_CHECK" },
   ask_farmer: { en: "Ask the farmer", hi: "किसान से प्रश्न", tag: "CLARIFY" },
   locate: { en: "Geocode farmer", hi: "स्थान", tag: "GEO_RESOLVE" },

@@ -6,8 +6,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from agent.guardrails import IRRIGATION_HI, render, template_draft, verify_draft
-from agent.prompts import PLANNER_PROMPT, SYNTH_PROMPT
+from agent.prompts import ASK_PROMPT, PLANNER_PROMPT, SYNTH_PROMPT
 from agent.state import AgentState, step
+from core.config import now_ist
 from core.llm import LLMError, active_model, generate_json, llm_available
 from tools import engine
 from tools.geocode import geocode_districts, geocode_place, reverse_geocode
@@ -59,8 +60,38 @@ def _rule_parse(query: str, asked: str | None) -> dict:
         elif DONT_KNOW.search(q):
             transport["unknown"] = True
     location = q if asked == "location" and q else None
-    return {"transcript": q, "language": ("hi" if DEVANAGARI.search(q) else "en") if q else None, "crop": crop,
-            "location": location, "intents": ALL_INTENTS, "question": q or "general advisory", "transport": transport}
+    low = q.lower()
+    intents = [i for i, pat in INTENT_WORDS.items() if re.search(pat, low)]
+    answering = bool(asked) and bool(q)
+    mode = "advisory" if (intents or answering) else "chat"
+    if mode == "advisory" and not intents and crop:
+        intents = ["spray", "irrigation", "weather"]
+    lang = ("hi" if DEVANAGARI.search(q) else "en") if q else None
+    reply = ""
+    if mode == "chat":
+        reply = ("मैं किसानसाथी हूँ — आपका खेती सहायक। मैं आज के मौसम, मिट्टी की नमी, छिड़काव के सही समय, सिंचाई और मंडी भाव "
+                 "लाइव डेटा से बता सकता हूँ। आप किस फसल के बारे में पूछना चाहेंगे?") if lang == "hi" else (
+                 "I'm KisanSaathi, your farming assistant. I can check today's weather, soil moisture, safe spray times, "
+                 "irrigation and live mandi prices for your crop. Which crop would you like help with?")
+    return {"transcript": q, "language": lang, "crop": crop, "mode": mode, "reply": reply,
+            "location": location, "intents": intents, "question": q or "general advisory", "transport": transport}
+
+
+INTENT_WORDS = {
+    "spray": r"spray|छिड़|छिड|दवा|कीटनाशक|pesticide",
+    "irrigation": r"irrigat|सिंचाई|पानी दे|पानी कब|water my|watering",
+    "sell": r"sell|बेच|मंडी|mandi|price|rate|भाव|दाम|market",
+    "weather": r"weather|मौसम|बारिश|rain|forecast",
+}
+
+
+def _season(dt) -> str:
+    m = dt.month
+    if m in (10, 11, 12, 1, 2):
+        return "Rabi sowing/growing season (winter)"
+    if m in (3, 4, 5):
+        return "Zaid season (summer) / Rabi harvest"
+    return "Kharif season (monsoon)"
 
 
 def _merge_slots(known: dict, plan: dict, asked: str | None) -> dict:
@@ -69,9 +100,12 @@ def _merge_slots(known: dict, plan: dict, asked: str | None) -> dict:
         slots["crop"] = plan["crop"]
     if plan.get("location"):
         slots["location"] = plan["location"]
-    if not asked or not slots.get("intents"):  # a fresh question sets the goal; an answer keeps it
-        slots["intents"] = plan.get("intents") or ALL_INTENTS
+    new_intents = [i for i in (plan.get("intents") or []) if i in ALL_INTENTS]
+    if new_intents and (not asked or not slots.get("intents")):  # a fresh request sets the goal; an answer keeps it
+        slots["intents"] = new_intents
         slots["question"] = plan.get("question") or slots.get("question")
+    elif new_intents:
+        slots["intents"] = list(dict.fromkeys((slots.get("intents") or []) + new_intents))
     slots["language"] = plan.get("language") or slots.get("language") or "en"
     t = plan.get("transport") or {}
     for k in ("cost_per_km", "load_quintals", "cost_per_qtl_km"):
@@ -99,9 +133,13 @@ def planner(state: AgentState) -> dict:
     if llm_available() and (query or audio):
         history = "\n".join(f"{m.get('role', '?')}: {m.get('text', '')}" for m in (state.get("history") or [])[-8:]) or "(none)"
         try:
+            now = now_ist()
+            place = (known.get("location") or state.get("ui_place_label") or state.get("ui_location") or
+                     ("GPS coordinates %.3f, %.3f" % (state["ui_lat"], state["ui_lon"]) if state.get("ui_lat") is not None else "unknown"))
             plan = generate_json(
                 PLANNER_PROMPT.format(query=query.replace('"', "'"), known=json.dumps(known, ensure_ascii=False),
-                                      asked=asked or "nothing yet", history=history),
+                                      asked=asked or "nothing", history=history, today=now.strftime("%d %B %Y"),
+                                      season=_season(now), place=place),
                 audio=audio, audio_mime=state.get("audio_mime", "audio/wav"),
                 budget_s=18 if audio else 12)
             how = f"Gemini ({active_model()}) understood " + ("voice" if audio else "text")
@@ -115,8 +153,11 @@ def planner(state: AgentState) -> dict:
         how = how or "rule-based parser"
 
     slots = _merge_slots(known, plan, asked)
+    plan["mode"] = "chat" if plan.get("mode") == "chat" else "advisory"
     plan["crop"] = slots.get("crop")
-    plan["intents"] = [i for i in (slots.get("intents") or ALL_INTENTS) if i in ALL_INTENTS] or ALL_INTENTS
+    plan["intents"] = [i for i in (slots.get("intents") or []) if i in ALL_INTENTS]
+    if plan["mode"] == "advisory" and not plan["intents"]:
+        plan["intents"] = ["spray", "irrigation", "weather"]  # crop check-up without selling
     plan["question"] = slots.get("question") or plan.get("question")
     plan["language"] = ui_lang if ui_lang in ("hi", "en") else ("hi" if slots.get("language") == "hi" else "en")
 
@@ -135,7 +176,7 @@ def planner(state: AgentState) -> dict:
     known_txt = [f"crop={plan['crop'] or '?'}", f"place={plan['location'] or plan['location_source']}",
                  f"transport={'₹%s/qtl/km' % cost if cost else ('not given' if slots.get('transport_unknown') else '?')}"]
     return {"plan": plan, "slots": slots, "cost_per_qtl_km": cost, "warnings": warnings,
-            "trace": [step("planner", f"{how}: {', '.join(known_txt)}, intents={','.join(plan['intents'])}, "
+            "trace": [step("planner", f"{how}: mode={plan['mode']}, {', '.join(known_txt)}, intents={','.join(plan['intents']) or '-'}, "
                                       f"lang={plan['language']}", _ms(t0))]}
 
 
@@ -146,8 +187,10 @@ def _missing_slot(state: AgentState) -> str | None:
         return "crop"
     if plan.get("location_source") == "none":
         return "location"
-    if "sell" in plan["intents"] and not slots.get("cost_per_qtl_km") and not slots.get("transport_unknown"):
-        return "transport_load" if slots.get("cost_per_km") else "transport"
+    # transport cost is optional: never block an answer on it (it only refines net-price ranking when given)
+    if slots.get("cost_per_km") and not slots.get("load_quintals") and not slots.get("cost_per_qtl_km") \
+            and not slots.get("transport_unknown") and state.get("asked") != "transport_load":
+        return "transport_load"
     return None
 
 
@@ -163,6 +206,23 @@ def route_slots(state: AgentState) -> str:
     return "ask_farmer" if state.get("status") == "need_info" else "locate"
 
 
+def route_mode(state: AgentState) -> str:
+    return "converse" if state["plan"].get("mode") == "chat" else "check_slots"
+
+
+def converse(state: AgentState) -> dict:
+    """Open conversation: Gemini already answered in the planner call (one LLM round-trip)."""
+    plan = state["plan"]
+    reply = (plan.get("reply") or "").strip()
+    if not reply:
+        reply = _rule_parse("", None)["reply"] if plan.get("language") != "hi" else (
+            "मैं किसानसाथी हूँ। मैं मौसम, सिंचाई, छिड़काव और मंडी भाव में आपकी मदद कर सकता हूँ। बताइए, किस फसल के बारे में पूछना है?")
+    return {"status": "chat", "asked": None,
+            "advisory": {"summary": reply, "actions": [], "tip": "", "verified": True,
+                         "by": f"Gemini ({active_model()}) conversation" if plan.get("reply") else "assistant"},
+            "trace": [step("converse", "general conversation — answered directly, no live data needed", 0)]}
+
+
 QUESTIONS = {
     "crop": ("आप किस फसल के बारे में पूछ रहे हैं? (जैसे टमाटर, गेहूं, धान)",
              "Which crop is this about? (e.g. tomato, wheat, paddy)"),
@@ -174,15 +234,35 @@ QUESTIONS = {
                   "do you carry per trip? Say 'don't know' to skip."),
     "transport_load": ("एक बार में गाड़ी में कितने क्विंटल माल जाता है?", "How many quintals do you carry per trip?"),
 }
+MISSING_DESC = {
+    "crop": "which crop they are asking about",
+    "location": "their village/town and district (or they can allow location access)",
+    "transport": "their vehicle/transport cost in rupees per km and how many quintals they carry per trip "
+                 "(needed to compare mandis after transport); they may say they don't know",
+    "transport_load": "how many quintals they carry per trip",
+}
 
 
 def ask_farmer(state: AgentState) -> dict:
+    t0 = time.perf_counter()
     slot = state.get("asked") or "crop"
     lang = state["plan"].get("language", "en")
-    hi, en = QUESTIONS[slot]
-    text = hi if lang == "hi" else en
-    return {"advisory": {"summary": text, "actions": [], "tip": "", "verified": True, "by": "agent question", "question": True},
-            "trace": [step("ask_farmer", f"asked the farmer about {slot}", 0)]}
+    text, by = None, "template"
+    if llm_available():
+        history = "\n".join(f"{m.get('role', '?')}: {m.get('text', '')}" for m in (state.get("history") or [])[-6:])
+        history += f"\nfarmer: {state['plan'].get('transcript') or state.get('query') or ''}"
+        try:
+            out = generate_json(ASK_PROMPT.format(missing=MISSING_DESC[slot], history=history,
+                                                  language_name="Hindi (Devanagari)" if lang == "hi" else "simple English"),
+                                temperature=0.5, budget_s=8)
+            text, by = (out.get("question") or "").strip() or None, f"Gemini ({active_model()})"
+        except LLMError:
+            pass
+    if not text:
+        hi, en = QUESTIONS[slot]
+        text = hi if lang == "hi" else en
+    return {"advisory": {"summary": text, "actions": [], "tip": "", "verified": True, "by": f"agent question · {by}", "question": True},
+            "trace": [step("ask_farmer", f"asked the farmer about {slot} ({by})", _ms(t0))]}
 
 
 # --------------------------------------------------------------------------- 2. locate
@@ -397,7 +477,7 @@ def run_engine(state: AgentState) -> dict:
         warnings.append("Spray/irrigation advice unavailable (no weather data).")
 
     ranked = state.get("ranked") or []
-    if ranked:
+    if ranked and "sell" in state["plan"].get("intents", []):
         summary = engine.market_summary(ranked)
         analysis["market"] = summary
         b, n = summary["best"], summary["nearest"]
@@ -413,10 +493,11 @@ def run_engine(state: AgentState) -> dict:
             facts["net_label"] = "भाड़ा घटाकर" if lang == "hi" else "after transport"
         else:
             facts["net_label"] = "(भाड़ा शामिल नहीं)" if lang == "hi" else "(transport not included)"
-            warnings.append("Transport cost not given — mandis ranked by price; distances shown so you can judge.")
+            warnings.append("Mandis ranked by price with distance shown — tell me your vehicle cost per km and load to rank by net earnings.")
     elif state["plan"].get("crop"):
         warnings.append(f"No mandi prices found today for {state['plan']['crop']}.")
 
+    analysis["intents"] = state["plan"].get("intents", [])
     return {"analysis": analysis, "facts": facts, "warnings": warnings,
             "trace": [step("engine", f"deterministic: {len((analysis.get('spray') or {}).get('windows', []))} spray windows, "
                                      f"irrigation={analysis.get('irrigation', {}).get('code', 'n/a')}, "
@@ -445,6 +526,8 @@ def synthesize(state: AgentState) -> dict:
                 irrigation_decision=analysis.get("irrigation", {}).get("decision", "unavailable"),
                 blockers=", ".join(analysis.get("spray", {}).get("blockers", [])) or "none",
                 warnings="; ".join(state.get("warnings", [])) or "none"), temperature=0.3, budget_s=20)
+            if not str(draft.get("summary") or "").strip():
+                raise LLMError("empty draft")
             return {"draft": {**draft, "_by": "llm"},
                     "trace": [step("synthesize", f"Gemini ({active_model()}) wrote advisory with placeholders "
                                                  f"(no raw numbers)", _ms(t0))]}

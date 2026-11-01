@@ -77,12 +77,12 @@ export default function AskView({ onAsk, running, result, chat = [], pending = n
   // After the agent finishes speaking a follow-up question, listen again automatically (hands-free voice turn).
   function onAgentAudioEnd(msg) {
     setSpeaking(false);
-    if (handsFree && voiceMode && msg.kind === "question" && !recRef.current && !running) startMic();
+    if (handsFree && voiceMode && msg.kind !== "answer" && !recRef.current && !running) startMic();
   }
   // No voice reply (speech off)? still reopen the mic for voice users after a question.
   const last = chat[chat.length - 1];
   useEffect(() => {
-    if (!running && last?.role === "agent" && last.kind === "question" && !last.tts && handsFree && voiceMode && !recRef.current) {
+    if (!running && last?.role === "agent" && last.kind !== "answer" && !last.tts && handsFree && voiceMode && !recRef.current) {
       const t = setTimeout(startMic, 500);
       return () => clearTimeout(t);
     }

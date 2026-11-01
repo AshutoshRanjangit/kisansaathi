@@ -79,7 +79,7 @@ export default function App() {
     try {
       await askAgent(
         { query: query || "", location: profile.coords ? "" : profile.location, lat: profile.coords?.lat, lon: profile.coords?.lon,
-          history: JSON.stringify(h), known: JSON.stringify(k), asked: a || "", lang, speak: profile.speak },
+          history: JSON.stringify(h), known: JSON.stringify(k), asked: a || "", place_label: profile.location || "", lang, speak: profile.speak },
         audioBlob,
         (ev) => {
           if (ev.type === "step") setSteps((s) => [...s, ev.step]);
@@ -87,13 +87,16 @@ export default function App() {
             const r = ev.result;
             const said = query || r.plan?.transcript || "🎙️";
             const isQuestion = r.status === "need_info";
+            const isChat = r.status === "chat";
             setChat([...h, { role: "farmer", text: said, voice: !!audioBlob },
-              { role: "agent", text: r.advisory?.summary || "", kind: isQuestion ? "question" : "answer",
-                tts: r.tts || null, result: isQuestion ? null : r }]);
+              { role: "agent", text: r.advisory?.summary || "", kind: isQuestion ? "question" : isChat ? "chat" : "answer",
+                tts: r.tts || null, result: isQuestion || isChat ? null : r }]);
             setKnown(r.slots || {});
             setAsked(r.asked || null);
             if (isQuestion) {
               setPending(r);
+            } else if (isChat) {
+              setPending(null);
             } else {
               setPending(null);
               setResult(r);

@@ -8,6 +8,7 @@ class AgentState(TypedDict, total=False):
     audio: Optional[bytes]
     audio_mime: str
     ui_location: str
+    ui_place_label: str
     ui_lat: Optional[float]
     ui_lon: Optional[float]
     ui_crop: str

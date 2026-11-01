@@ -102,7 +102,7 @@ def _compact(final: dict, t_start: float) -> dict:
 @app.post("/api/ask")
 async def ask(query: str = Form(""), location: str = Form(""),
               lat: float | None = Form(None), lon: float | None = Form(None),
-              history: str = Form("[]"), known: str = Form("{}"), asked: str = Form(""),
+              history: str = Form("[]"), known: str = Form("{}"), asked: str = Form(""), place_label: str = Form(""),
               lang: str = Form("auto"), speak: bool = Form(True),
               audio: UploadFile | None = File(None)):
     audio_bytes = await audio.read() if audio else None
@@ -115,7 +115,7 @@ async def ask(query: str = Form(""), location: str = Form(""),
 
     inputs = {"query": query, "audio": audio_bytes or None,
               "audio_mime": (audio.content_type if audio else None) or "audio/wav",
-              "ui_location": location, "ui_lat": lat, "ui_lon": lon, "ui_lang": lang,
+              "ui_location": location, "ui_place_label": place_label, "ui_lat": lat, "ui_lon": lon, "ui_lang": lang,
               "history": _json(history, []), "known": _json(known, {}), "asked": asked or None,
               "trace": [], "warnings": [], "sources": []}
 

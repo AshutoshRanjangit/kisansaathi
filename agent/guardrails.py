@@ -85,6 +85,7 @@ IRRIGATION_HI = {
 
 
 def template_draft(facts: dict, analysis: dict, lang: str) -> dict:
+    intents = analysis.get("intents") or ["spray", "irrigation", "sell", "weather"]
     has_spray = bool(analysis.get("spray", {}).get("windows"))
     has_market = bool(analysis.get("market", {}).get("best"))
     irr_code = analysis.get("irrigation", {}).get("code", "unknown")
@@ -100,9 +101,11 @@ def template_draft(facts: dict, analysis: dict, lang: str) -> dict:
             actions.append({"title": "कहाँ बेचें", "detail": (
                 "{best_mandi} ({best_mandi_district}) — भाव {best_modal_price} ₹/क्विंटल, दूरी {best_distance_km} किमी, "
                 "{net_label} {best_net_price} ₹/क्विंटल।" + (" नज़दीकी मंडी से {extra_gain} ₹/क्विंटल ज़्यादा।" if gain else ""))})
-        summary = ("{location} में {crop} के लिए: " + ("छिड़काव {spray_window} पर करें। " if has_spray else "अभी छिड़काव टालें। ")
-                   + IRRIGATION_HI.get(irr_code, "") + "। "
-                   + ("सबसे अच्छा भाव {best_mandi} में {best_net_price} ₹/क्विंटल {net_label} है।" if has_market else ""))
+        summary = ("{location} में {crop} के लिए: "
+                   + (("छिड़काव {spray_window} पर करें। " if has_spray else "अभी छिड़काव टालें। ") if "spray" in intents else "")
+                   + (IRRIGATION_HI.get(irr_code, "") + "। " if ("irrigation" in intents or "weather" in intents) else "")
+                   + ("सबसे अच्छा भाव {best_mandi} में {best_net_price} ₹/क्विंटल {net_label} है।" if has_market else
+                      ("आज इस फसल का मंडी भाव नहीं मिला।" if "sell" in intents else "")))
         tip = "अगली बारिश: {next_rain}। दवा का लेबल और खुराक ज़रूर पढ़ें।"
     else:
         actions = []
@@ -115,7 +118,10 @@ def template_draft(facts: dict, analysis: dict, lang: str) -> dict:
             actions.append({"title": "Where to sell", "detail": (
                 "{best_mandi} ({best_mandi_district}) — modal {best_modal_price} ₹/qtl, {best_distance_km} km away, "
                 "{best_net_price} ₹/qtl {net_label}." + (" That is {extra_gain} ₹/qtl more than the nearest mandi." if gain else ""))})
-        summary = ("For {crop} near {location}: " + ("spray during {spray_window}. " if has_spray else "postpone spraying. ")
-                   + "{irrigation_decision}. " + ("Best price: {best_net_price} ₹/qtl {net_label} at {best_mandi}." if has_market else ""))
+        summary = ("For {crop} near {location}: "
+                   + (("spray during {spray_window}. " if has_spray else "postpone spraying. ") if "spray" in intents else "")
+                   + ("{irrigation_decision}. " if ("irrigation" in intents or "weather" in intents) else "")
+                   + ("Best price: {best_net_price} ₹/qtl {net_label} at {best_mandi}." if has_market else
+                      ("No mandi price reported for this crop today." if "sell" in intents else "")))
         tip = "Next rain: {next_rain}. Always follow the pesticide label dose."
     return {"summary": summary, "actions": actions, "tip": tip}
