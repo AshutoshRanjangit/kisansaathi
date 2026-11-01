@@ -29,10 +29,10 @@ const NW = 150, SW = 120, NH = 32;
 export default function AgentGraph({ visited, selfCorrect, active }) {
   const seen = new Set(visited);
   const color = (k) => {
-    if (active === k) return { fill: "#fde68a", stroke: "#b45309", text: "#78350f" };
-    if (selfCorrect.has(k)) return { fill: "#f59e0b", stroke: "#b45309", text: "#1f2937" };
-    if (seen.has(k)) return { fill: "#14532d", stroke: "#14532d", text: "#ffffff" };
-    return { fill: "#f3f4f6", stroke: "#d1d5db", text: "#6b7280" };
+    if (active === k) return { fill: "#22d3ee", stroke: "#67e8f9", text: "#04131a", pulse: true };
+    if (selfCorrect.has(k)) return { fill: "#f59e0b", stroke: "#fbbf24", text: "#1c1204", pulse: true };
+    if (seen.has(k)) return { fill: "#064e3b", stroke: "#10b981", text: "#d1fae5" };
+    return { fill: "#0a1310", stroke: "#1e3a32", text: "#64748b" };
   };
   const hot = (a, b) => seen.has(a) && seen.has(b);
 
@@ -41,7 +41,7 @@ export default function AgentGraph({ visited, selfCorrect, active }) {
       <defs>
         {["g", "a", "s"].map((id) => (
           <marker key={id} id={`arrow-${id}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M0,0 L10,5 L0,10 z" fill={id === "g" ? "#16a34a" : id === "a" ? "#d97706" : "#cbd5e1"} />
+            <path d="M0,0 L10,5 L0,10 z" fill={id === "g" ? "#10b981" : id === "a" ? "#f59e0b" : "#1e3a32"} />
           </marker>
         ))}
       </defs>
@@ -52,7 +52,7 @@ export default function AgentGraph({ visited, selfCorrect, active }) {
           : kind === "skipL2" ? hot(a, b) && !seen.has("geocode_mandis")
           : hot(a, b);
         const loopHot = kind === "loop" && selfCorrect.has(b);
-        const stroke = loopHot ? "#d97706" : isHot ? "#16a34a" : "#cbd5e1";
+        const stroke = loopHot ? "#f59e0b" : isHot ? "#10b981" : "#1e3a32";
         const marker = loopHot ? "a" : isHot ? "g" : "s";
         const sw = isHot || loopHot ? 2 : 1.2;
         let d;
@@ -75,8 +75,8 @@ export default function AgentGraph({ visited, selfCorrect, active }) {
         const w = n.side ? SW : NW;
         return (
           <g key={k}>
-            <rect x={n.x - w / 2} y={n.y - NH / 2} width={w} height={NH} rx="9" fill={c.fill} stroke={c.stroke} strokeWidth="1.5" />
-            <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize="11.5" fontWeight="600" fill={c.text} fontFamily="Inter, sans-serif">
+            <rect x={n.x - w / 2} y={n.y - NH / 2} width={w} height={NH} rx="9" fill={c.fill} stroke={c.stroke} strokeWidth="1.5" className={c.pulse ? "animate-pulse" : ""} />
+            <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize="11.5" fontWeight="600" fill={c.text} fontFamily="JetBrains Mono, monospace">
               {n.label}
             </text>
           </g>

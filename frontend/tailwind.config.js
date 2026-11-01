@@ -4,15 +4,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        forest: { 50: "#f0f7f2", 100: "#dcefe2", 600: "#15803d", 700: "#166534", 800: "#14532d", 900: "#0f3d22", 950: "#0a2a17" },
-        wheat: { 100: "#fef6d8", 400: "#facc15", 500: "#eab308" },
-        paper: "#f6f8f4",
+        // legacy names kept so nothing breaks; values retuned to the cyber-organic palette
+        forest: { 50: "#0f201b", 100: "#14302a", 600: "#10b981", 700: "#34d399", 800: "#10b981", 900: "#0b1712", 950: "#09120e" },
+        wheat: { 100: "rgba(245,158,11,.10)", 400: "#fbbf24", 500: "#f59e0b" },
+        paper: "#070d0b",
+        abyss: { DEFAULT: "#070d0b", 900: "#09120e", 800: "#0a1310", 700: "#0f201b" },
+        caution: "#f59e0b",
+        alert: "#f43f5e",
       },
       fontFamily: {
         sans: ["Inter", "Noto Sans Devanagari", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "monospace"],
       },
-      boxShadow: { card: "0 1px 2px rgba(16,40,24,.06), 0 4px 16px rgba(16,40,24,.06)" },
+      boxShadow: {
+        card: "0 0 0 1px rgba(16,185,129,.04), 0 8px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.03)",
+        glow: "0 0 24px rgba(16,185,129,.35)",
+      },
     },
   },
   plugins: [],

@@ -11,12 +11,12 @@ function EmptyState({ what, hi, onAsk }) {
     <div className="card grid min-h-[420px] place-items-center p-10 text-center">
       <div>
         <div className="text-5xl">🌾</div>
-        <div className="mt-4 text-xl font-bold text-slate-900">No question asked yet</div>
-        <div className="hi mt-1 text-slate-500">अभी तक कोई प्रश्न नहीं पूछा गया</div>
-        <p className="mx-auto mt-3 max-w-md text-sm text-slate-600">
+        <div className="mt-4 text-xl font-bold text-slate-100">No question asked yet</div>
+        <div className="hi mt-1 text-slate-400">अभी तक कोई प्रश्न नहीं पूछा गया</div>
+        <p className="mx-auto mt-3 max-w-md text-sm text-slate-300">
           The {what} (<span className="hi">{hi}</span>) fills in live as soon as you ask KisanSaathi a question.
         </p>
-        <button onClick={onAsk} className="mt-6 rounded-xl bg-forest-800 px-6 py-3 font-semibold text-white hover:bg-forest-700">
+        <button onClick={onAsk} className="mt-6 rounded-xl bg-forest-800 px-6 py-3 font-semibold text-slate-950 hover:bg-forest-700">
           Ask a question / <span className="hi">प्रश्न पूछें</span>
         </button>
       </div>
@@ -73,8 +73,9 @@ export default function App() {
     setRunning(true);
     setError("");
     setSteps([]);
-    setView("trace");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setView("ask"); // the whole query stays on one conversation screen
+    // show the farmer's turn immediately (voice transcript replaces the placeholder when it arrives)
+    setChat([...h, { role: "farmer", text: query || "🎙️ …", voice: !!audioBlob }]);
     try {
       await askAgent(
         { query: query || "", location: profile.coords ? "" : profile.location, lat: profile.coords?.lat, lon: profile.coords?.lon,
@@ -85,16 +86,17 @@ export default function App() {
           if (ev.type === "result") {
             const r = ev.result;
             const said = query || r.plan?.transcript || "🎙️";
-            setChat([...h, { role: "farmer", text: said }, { role: "agent", text: r.advisory?.summary || "" }]);
+            const isQuestion = r.status === "need_info";
+            setChat([...h, { role: "farmer", text: said, voice: !!audioBlob },
+              { role: "agent", text: r.advisory?.summary || "", kind: isQuestion ? "question" : "answer",
+                tts: r.tts || null, result: isQuestion ? null : r }]);
             setKnown(r.slots || {});
             setAsked(r.asked || null);
-            if (r.status === "need_info") {
+            if (isQuestion) {
               setPending(r);
-              setTimeout(() => setView("ask"), 600);
             } else {
               setPending(null);
               setResult(r);
-              setTimeout(() => setView("dashboard"), 900);
             }
           }
           if (ev.type === "error") setError(`Agent error: ${ev.error}`);
@@ -107,12 +109,13 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-[#070d0b] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0d221a] via-[#070d0b] to-[#040605] text-slate-100">
       <Header view={view} setView={setView} health={health} lang={lang} setLang={setLang} hasResult={!!result} running={running} />
       <main className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 md:px-8 lg:grid-cols-[320px_1fr]">
         <Sidebar profile={profile} setProfile={setProfile} place={result?.place} geo={geo} onLocate={locateMe} known={known} onReset={resetChat} />
         <div className="order-1 min-w-0 lg:order-2">
-          {view === "ask" && <AskView onAsk={onAsk} running={running} result={result} chat={chat} pending={pending} />}
+          {view === "ask" && <AskView onAsk={onAsk} running={running} result={result} chat={chat} pending={pending} steps={steps} error={error}
+            onReset={resetChat} onOpenDashboard={() => setView("dashboard")} onOpenTrace={() => setView("trace")} />}
           {view === "trace" && (steps.length || running || error
             ? <TraceView steps={steps} running={running} result={running ? null : result} error={error} onOpenDashboard={() => setView("dashboard")} />
             : <EmptyState what="agent trace" hi="एजेंट ट्रेस" onAsk={() => setView("ask")} />)}
@@ -121,7 +124,7 @@ export default function App() {
             : <EmptyState what="advisory dashboard" hi="सलाह डैशबोर्ड" onAsk={() => setView("ask")} />)}
         </div>
       </main>
-      <footer className="mt-8 bg-forest-950 px-4 py-4 text-center text-xs text-forest-100/80 md:px-8">
+      <footer className="mt-8 border-t border-emerald-950/40 bg-[#09120e]/60 px-4 py-4 text-center font-mono text-[11px] text-slate-500 backdrop-blur-md md:px-8">
         KisanSaathi · Live data: Agmarknet (data.gov.in) · Open-Meteo (weather, soil moisture, ET₀, VPD) · Built for Forge Gen-AI Buildathon
       </footer>
     </div>

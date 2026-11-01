@@ -27,9 +27,9 @@ export default function TraceView({ steps, running, result, error, onOpenDashboa
   return (
     <div className="space-y-5">
       <div className="card flex flex-wrap items-center gap-3 px-5 py-3">
-        <span className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-sm">
-          <Mic size={16} className="text-red-500" />
-          <span className="text-slate-500">Heard:</span>
+        <span className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-emerald-500/15 px-3 py-1.5 text-sm">
+          <Mic size={16} className="text-rose-400" />
+          <span className="text-slate-400">Heard:</span>
           <b className="hi truncate">{heard ? `“${heard}”` : running ? "…" : "—"}</b>
         </span>
         <Pill tone={running ? "dark" : "green"}>
@@ -39,7 +39,7 @@ export default function TraceView({ steps, running, result, error, onOpenDashboa
         <Pill tone="slate"><Cpu size={12} /> {result?.model || "Gemini"}</Pill>
       </div>
 
-      {error && <div className="card border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+      {error && <div className="card border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-400">{error}</div>}
 
       <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
         <section className="card p-5">
@@ -62,25 +62,25 @@ export default function TraceView({ steps, running, result, error, onOpenDashboa
               const sc = s.node === "self_correct";
               return (
                 <li key={i} className="fade-up relative flex gap-3">
-                  <span className="relative z-10 mt-2.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white ring-4 ring-paper">
+                  <span className="relative z-10 mt-2.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#0f201b]/60 ring-4 ring-[#070d0b]">
                     <StatusIcon status={s.status} selfCorrect={sc} size={20} />
                   </span>
-                  <div className={`flex-1 rounded-xl border p-3 ${sc ? "border-amber-300 bg-amber-50" : s.node === "guardrail" ? "border-forest-600/40 bg-forest-50" : "border-slate-200 bg-white"}`}>
+                  <div className={`flex-1 rounded-xl border p-3 ${sc ? "border-amber-500/40 bg-amber-500/10" : s.node === "guardrail" ? "border-forest-600/40 bg-forest-50" : "border-emerald-500/15 bg-[#0f201b]/60"}`}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <b className={sc ? "text-amber-800" : "text-slate-900"}>{meta.en}</b>
-                      {meta.tag && <span className={`mono rounded px-1.5 py-0.5 text-[10px] ${sc ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-500"}`}>{meta.tag}</span>}
-                      <span className="mono ml-auto rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-500">{s.ms} ms</span>
+                      <b className={sc ? "text-amber-300" : "text-slate-100"}>{meta.en}</b>
+                      {meta.tag && <span className={`mono rounded px-1.5 py-0.5 text-[10px] ${sc ? "bg-amber-500 text-white" : "bg-[#0a1310] text-slate-400"}`}>{meta.tag}</span>}
+                      <span className="mono ml-auto rounded-md border border-emerald-500/15 bg-[#0f201b]/60 px-1.5 py-0.5 text-[11px] text-slate-400">{s.ms} ms</span>
                     </div>
-                    <div className="mt-1 text-sm text-slate-600">{s.detail}</div>
+                    <div className="mt-1 text-sm text-slate-300">{s.detail}</div>
                     {s.node === "fetch_parallel" && subSteps.length > 0 && (
                       <div className="mt-2 grid gap-2 md:grid-cols-2">
                         {subSteps.map((x, j) => (
-                          <div key={j} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
-                            <div className="mono flex items-center gap-1.5 font-medium text-slate-700">
+                          <div key={j} className="rounded-lg border border-emerald-500/15 bg-emerald-500/5 p-2 text-xs">
+                            <div className="mono flex items-center gap-1.5 font-medium text-slate-200">
                               <StatusIcon status={x.status} size={13} /> {NODE_META[x.node].en}
-                              <span className="ml-auto text-slate-400">{x.ms} ms</span>
+                              <span className="ml-auto text-slate-500">{x.ms} ms</span>
                             </div>
-                            <div className="mt-1 text-slate-600">{x.detail}</div>
+                            <div className="mt-1 text-slate-300">{x.detail}</div>
                           </div>
                         ))}
                       </div>
@@ -91,15 +91,15 @@ export default function TraceView({ steps, running, result, error, onOpenDashboa
             })}
             {running && (
               <li className="relative flex gap-3">
-                <span className="relative z-10 mt-1 grid h-7 w-7 place-items-center rounded-full bg-white ring-4 ring-paper">
-                  <Loader2 size={18} className="animate-spin text-forest-600" />
+                <span className="relative z-10 mt-1 grid h-7 w-7 place-items-center rounded-full bg-[#0f201b]/60 ring-4 ring-[#070d0b]">
+                  <Loader2 size={18} className="animate-spin text-emerald-400" />
                 </span>
-                <div className="flex-1 rounded-xl border border-dashed border-slate-300 p-3 text-sm text-slate-400">Working…</div>
+                <div className="flex-1 rounded-xl border border-dashed border-emerald-500/25 p-3 text-sm text-slate-500">Working…</div>
               </li>
             )}
           </ol>
           {result && (
-            <button onClick={onOpenDashboard} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-forest-800 py-3 font-semibold text-white hover:bg-forest-700">
+            <button onClick={onOpenDashboard} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-forest-800 py-3 font-semibold text-slate-950 hover:bg-forest-700">
               View verified advisory <ArrowRight size={18} />
             </button>
           )}
@@ -107,15 +107,15 @@ export default function TraceView({ steps, running, result, error, onOpenDashboa
 
         <section className="card h-fit p-5 lg:sticky lg:top-[132px]">
           <SectionTitle icon={Network} en="Agent Execution Graph" hi="LangGraph · इस प्रश्न का वास्तविक मार्ग" />
-          <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+          <div className="mt-4 rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-3">
             <AgentGraph visited={visited} selfCorrect={selfCorrect} active={running ? graphNodeFor(steps[steps.length - 1] || { node: "planner", detail: "" }) : null} />
           </div>
-          <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-600">
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-300">
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-forest-800" /> Executed ({visited.length})</span>
             <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-amber-500" /> Self-correction ({selfCorrect.size})</span>
-            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border border-slate-300 bg-slate-100" /> Not needed</span>
+            <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded border border-emerald-500/25 bg-[#0a1310]" /> Not needed</span>
           </div>
-          <div className="mt-4 flex items-start gap-2 rounded-xl border border-forest-100 bg-forest-50/60 p-3 text-xs text-forest-800">
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-300">
             <ShieldCheck size={16} className="mt-0.5 shrink-0" />
             The LLM only plans and writes text with placeholders. Every number is computed in Python from live API responses and verified before display.
           </div>
@@ -127,10 +127,10 @@ export default function TraceView({ steps, running, result, error, onOpenDashboa
 
 function Stat({ k, v, sub, tone }) {
   return (
-    <div className={`rounded-xl border p-3 ${tone === "amber" ? "border-amber-200 bg-amber-50" : "border-slate-200"}`}>
+    <div className={`rounded-xl border p-3 ${tone === "amber" ? "border-amber-500/30 bg-amber-500/10" : "border-emerald-500/15"}`}>
       <div className="label text-[10px]">{k}</div>
-      <div className={`mt-1 text-xl font-bold ${tone === "amber" ? "text-amber-700" : "text-slate-900"}`}>{v}</div>
-      {sub && <div className="text-[11px] text-slate-500">{sub}</div>}
+      <div className={`mt-1 text-xl font-bold ${tone === "amber" ? "text-amber-400" : "text-slate-100"}`}>{v}</div>
+      {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
     </div>
   );
 }

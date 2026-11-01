@@ -27,18 +27,18 @@ export function graphNodeFor(step) {
 
 export function StatusIcon({ status, selfCorrect, size = 18 }) {
   if (selfCorrect) return <RefreshCw size={size} className="text-amber-600" />;
-  if (status === "fail") return <XCircle size={size} className="text-red-600" />;
+  if (status === "fail") return <XCircle size={size} className="text-rose-400" />;
   if (status === "warn") return <AlertTriangle size={size} className="text-amber-500" />;
-  return <CheckCircle2 size={size} className="text-forest-600" />;
+  return <CheckCircle2 size={size} className="text-emerald-400" />;
 }
 
 export function Pill({ children, tone = "green", className = "" }) {
   const tones = {
-    green: "bg-forest-50 text-forest-700 border-forest-100",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-    red: "bg-red-50 text-red-700 border-red-200",
-    slate: "bg-slate-50 text-slate-600 border-slate-200",
-    dark: "bg-forest-900 text-forest-50 border-forest-900",
+    green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    amber: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+    red: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+    slate: "bg-emerald-500/5 text-slate-300 border-emerald-500/15",
+    dark: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20 font-mono",
   };
   return (
     <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${tones[tone]} ${className}`}>
@@ -52,13 +52,13 @@ export function SectionTitle({ icon: Icon, en, hi, right }) {
     <div className="flex items-start justify-between gap-3">
       <div className="flex items-center gap-2.5">
         {Icon && (
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-forest-50 text-forest-700">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-forest-50 text-emerald-400">
             <Icon size={18} />
           </span>
         )}
         <div>
-          <div className="font-semibold text-slate-900 leading-tight">{en}</div>
-          {hi && <div className="hi text-xs text-slate-500">{hi}</div>}
+          <div className="font-semibold text-slate-100 leading-tight">{en}</div>
+          {hi && <div className="hi text-xs text-slate-400">{hi}</div>}
         </div>
       </div>
       {right}

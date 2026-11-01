@@ -59,7 +59,7 @@ def _rule_parse(query: str, asked: str | None) -> dict:
         elif DONT_KNOW.search(q):
             transport["unknown"] = True
     location = q if asked == "location" and q else None
-    return {"transcript": q, "language": "hi" if DEVANAGARI.search(q) else "en", "crop": crop,
+    return {"transcript": q, "language": ("hi" if DEVANAGARI.search(q) else "en") if q else None, "crop": crop,
             "location": location, "intents": ALL_INTENTS, "question": q or "general advisory", "transport": transport}
 
 
